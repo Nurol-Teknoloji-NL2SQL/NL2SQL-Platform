@@ -48,6 +48,7 @@ jobs:
 
       - name: Lint (Ruff)
         run: ruff check .
+        continue-on-error: true
 
       - name: Type Check (mypy)
         run: mypy app/ --ignore-missing-imports

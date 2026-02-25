@@ -8,7 +8,6 @@ Stratejiler:
 3. Startup event'te bağlantı havuzları ve cache warm-up yapılır
 4. Health check "startup probe" ile hazır olmadan trafik almaz
 """
-import asyncio
 import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
