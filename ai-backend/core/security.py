@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.errors import ParseError, TokenError
 
 
 # Blacklisted SQL statement types (DML / DDL that mutate data)
@@ -38,7 +39,7 @@ def validate_sql(sql: str) -> ValidationResult:
 
     Performs two layers of validation:
     1. **Regex** – fast pre-flight check for clearly dangerous keywords.
-    2. **AST**  – parses with sqlglot and inspects statement types.
+    2. **AST** – parses with sqlglot and inspects statement types.
 
     Returns a ``ValidationResult`` with ``is_valid=True`` when the query is safe
     or ``is_valid=False`` with a human-readable ``error`` message otherwise.
@@ -60,10 +61,15 @@ def validate_sql(sql: str) -> ValidationResult:
     # ---- Layer 2: AST parsing via sqlglot ----
     try:
         parsed = sqlglot.parse(cleaned)
-    except sqlglot.errors.ParseError as exc:
+    except (ParseError, TokenError) as exc:
         return ValidationResult(
             is_valid=False,
-            error=f"SQL syntax error: {exc}",
+            error=f"SQL syntax/token error (Model might have returned text instead of SQL): {exc}",
+        )
+    except Exception as exc:
+        return ValidationResult(
+            is_valid=False,
+            error=f"Unexpected validation error: {exc}",
         )
 
     for statement in parsed:
