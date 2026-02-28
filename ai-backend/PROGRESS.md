@@ -148,6 +148,16 @@ Kullanıcı Sorusu (db_id + connection_string)
 - `ParseError` / `TokenError` yakalanıp açıklayıcı hata döner
 - **Read-only execution:** `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY`
 
+### Adım 5 – Çapraz DBMS Uyumluluk & Güvenlik İyileştirmeleri ✅
+- **`services/db_inspector.py`** – Multi-DBMS şema introspection'a güncellendi:
+  - Tüm şemalar taranıyor (`inspector.get_schema_names()`)
+  - Evrensel sistem şema karalistesi: MSSQL (`sys`, `information_schema`), PostgreSQL (`pg_catalog`, `pg_toast`), MySQL (`mysql`, `performance_schema`), Oracle (`ctxsys`, `mdsys` vb.), SQLite (`sqlite_master` vb.)
+  - Şema destekleyen DB'ler için `schema.table` isimlendirmesi, desteklemeyenler için sadece `table`
+  - `human_description` ve `business_rules` alanları introspection çıktısına eklendi
+  - Hata toleransı: Şema okunamazsa `continue` ile devam
+- **`core/security.py`** – sqlglot T-SQL dialect desteği eklendi:
+  - `sqlglot.parse(cleaned, read="tsql")` ile MS SQL Server sorgularını doğru parse ediyor
+
 ---
 
 ## Kalan İşler
