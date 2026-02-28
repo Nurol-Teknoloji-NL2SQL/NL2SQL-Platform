@@ -14,25 +14,24 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agent.prompts import SQL_EXPLAIN_PROMPT, SQL_GENERATION_PROMPT
 from agent.state import AgentState
 from core.security import validate_sql
+from services.db_inspector import DBInspector
 from services.llm import get_llm
-from services.retriever import SchemaRetriever
+from services.vector_store import retrieve_relevant_schema
 
 logger = logging.getLogger(__name__)
 
-# Shared retriever instance
-_retriever = SchemaRetriever()
-
 
 # ---------------------------------------------------------------------------
-# Node 1 – Retrieve relevant schema DDL
+# Node 1 – Retrieve relevant schema DDL from ChromaDB
 # ---------------------------------------------------------------------------
 async def retrieve_schema_node(state: AgentState) -> dict:
-    """Fetch DDL / schema context relevant to the user's question."""
+    """Fetch DDL / schema context from the vector store, filtered by db_id."""
 
+    db_id: str = state["db_id"]
     question: str = state["question"]
-    logger.info("retrieve_schema_node | question=%s", question[:80])
+    logger.info("retrieve_schema_node | db_id=%s | question=%s", db_id, question[:80])
 
-    schema = await _retriever.retrieve(question)
+    schema = retrieve_relevant_schema(db_id=db_id, question=question)
 
     return {"relevant_schema": schema}
 
@@ -45,7 +44,7 @@ async def generate_sql_node(state: AgentState) -> dict:
 
     prompt_text = SQL_GENERATION_PROMPT.format(
         schema=state["relevant_schema"],
-        validation_error=state.get("validation_error") or "None",
+        validation_error=state.get("validation_error") or "Yok",
         question=state["question"],
     )
 
@@ -58,7 +57,7 @@ async def generate_sql_node(state: AgentState) -> dict:
     llm = get_llm()
     response = await llm.ainvoke(
         [
-            SystemMessage(content="You are a SQL-only assistant. Output raw SQL and nothing else."),
+            SystemMessage(content="Sen sadece SQL üreten bir asistansın. Sadece ham SQL döndür, başka hiçbir şey yazma."),
             HumanMessage(content=prompt_text),
         ]
     )
@@ -71,11 +70,8 @@ async def generate_sql_node(state: AgentState) -> dict:
 
 def _clean_sql(text: str) -> str:
     """Strip markdown fences and extraneous whitespace from model output."""
-
-    # Remove ```sql ... ``` blocks if the model wraps anyway
     text = re.sub(r"```(?:sql)?\s*", "", text)
     text = re.sub(r"```", "", text)
-    # Collapse to a single statement; trim
     return text.strip()
 
 
@@ -88,29 +84,49 @@ async def validate_sql_node(state: AgentState) -> dict:
     sql = state["generated_sql"]
     logger.info("validate_sql_node | sql=%s", sql[:120])
 
-    result = validate_sql(sql)
+    error = validate_sql(sql)
 
-    if result.is_valid:
+    if error is None:
         logger.info("validate_sql_node | PASS")
         return {"validation_error": None}
 
     retry = state.get("retry_count", 0) + 1
     logger.warning(
         "validate_sql_node | FAIL (%s) | retry_count=%s",
-        result.error,
+        error,
         retry,
     )
     return {
-        "validation_error": result.error,
+        "validation_error": error,
         "retry_count": retry,
     }
 
 
 # ---------------------------------------------------------------------------
-# Node 4 – Explain the validated SQL in plain language
+# Node 4 – Execute validated SQL (read-only)
+# ---------------------------------------------------------------------------
+async def execute_sql_node(state: AgentState) -> dict:
+    """Connect to the target DB and execute the validated SQL."""
+
+    connection_string: str = state["connection_string"]
+    sql: str = state["generated_sql"]
+    logger.info("execute_sql_node | executing query")
+
+    try:
+        inspector = DBInspector(connection_string)
+        rows = inspector.execute_read_only(sql)
+        inspector.dispose()
+        return {"execution_data": rows}
+    except Exception as exc:
+        logger.exception("execute_sql_node | execution failed")
+        return {"execution_data": None, "validation_error": f"Execution error: {exc}"}
+
+
+# ---------------------------------------------------------------------------
+# Node 5 – Explain the validated SQL in plain language (Turkish)
 # ---------------------------------------------------------------------------
 async def explain_sql_node(state: AgentState) -> dict:
-    """Call the LLM to produce a concise natural-language explanation."""
+    """Call the LLM to produce a concise Turkish explanation."""
 
     prompt_text = SQL_EXPLAIN_PROMPT.format(
         sql_query=state["generated_sql"],
@@ -122,7 +138,7 @@ async def explain_sql_node(state: AgentState) -> dict:
     llm = get_llm()
     response = await llm.ainvoke(
         [
-            SystemMessage(content="You are a concise data translator."),
+            SystemMessage(content="Sen kısa ve öz açıklama yapan bir veri çevirmenisin. Her zaman Türkçe yanıt ver."),
             HumanMessage(content=prompt_text),
         ]
     )

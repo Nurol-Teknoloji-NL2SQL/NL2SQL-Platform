@@ -1,8 +1,8 @@
 """
 LangGraph StateGraph definition – wires nodes, edges, and conditional routing.
 
-Graph topology
-==============
+Graph topology (V2 – with execution)
+====================================
 
     START
       │
@@ -17,6 +17,9 @@ Graph topology
       │          │  validation_error AND retry < 3
       │          └──► generate_sql  (loop back)
       ▼
+  execute_sql
+      │
+      ▼
   explain_sql
       │
       ▼
@@ -30,6 +33,7 @@ from typing import Literal
 from langgraph.graph import END, START, StateGraph
 
 from agent.nodes import (
+    execute_sql_node,
     explain_sql_node,
     generate_sql_node,
     retrieve_schema_node,
@@ -44,10 +48,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Conditional edge: decide what happens after validation
 # ---------------------------------------------------------------------------
-def _after_validation(state: AgentState) -> Literal["generate_sql", "explain_sql", "__end__"]:
+def _after_validation(state: AgentState) -> Literal["generate_sql", "execute_sql", "__end__"]:
     """Route after ``validate_sql_node``.
 
-    * If valid  → proceed to ``explain_sql``
+    * If valid  → proceed to ``execute_sql``
     * If invalid AND retries left → loop back to ``generate_sql``
     * If invalid AND retries exhausted → END (return error in response)
     """
@@ -55,7 +59,7 @@ def _after_validation(state: AgentState) -> Literal["generate_sql", "explain_sql
     retries = state.get("retry_count", 0)
 
     if error is None:
-        return "explain_sql"
+        return "execute_sql"
 
     if retries < settings.MAX_RETRY_COUNT:
         logger.info(
@@ -81,6 +85,7 @@ def build_graph() -> StateGraph:
     builder.add_node("retrieve_schema", retrieve_schema_node)
     builder.add_node("generate_sql", generate_sql_node)
     builder.add_node("validate_sql", validate_sql_node)
+    builder.add_node("execute_sql", execute_sql_node)
     builder.add_node("explain_sql", explain_sql_node)
 
     # -- Edges --
@@ -88,17 +93,18 @@ def build_graph() -> StateGraph:
     builder.add_edge("retrieve_schema", "generate_sql")
     builder.add_edge("generate_sql", "validate_sql")
 
-    # Conditional: after validation either loop, explain, or end
+    # Conditional: after validation either loop, execute, or end
     builder.add_conditional_edges(
         "validate_sql",
         _after_validation,
         {
             "generate_sql": "generate_sql",
-            "explain_sql": "explain_sql",
+            "execute_sql": "execute_sql",
             END: END,
         },
     )
 
+    builder.add_edge("execute_sql", "explain_sql")
     builder.add_edge("explain_sql", END)
 
     graph = builder.compile()

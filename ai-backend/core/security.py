@@ -4,7 +4,6 @@ SQL security validation – blocks DML/DDL operations via regex + sqlglot AST pa
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
 import sqlglot
 from sqlglot import exp
@@ -28,58 +27,40 @@ _DML_PATTERN = re.compile(
 )
 
 
-@dataclass
-class ValidationResult:
-    is_valid: bool
-    error: str | None = None
+def validate_sql(sql: str) -> str | None:
+    """Validates SQL using regex and AST parsing.
 
-
-def validate_sql(sql: str) -> ValidationResult:
-    """Validate that *sql* is a safe, read-only SELECT statement.
-
-    Performs two layers of validation:
-    1. **Regex** – fast pre-flight check for clearly dangerous keywords.
-    2. **AST** – parses with sqlglot and inspects statement types.
-
-    Returns a ``ValidationResult`` with ``is_valid=True`` when the query is safe
-    or ``is_valid=False`` with a human-readable ``error`` message otherwise.
+    Returns ``None`` if valid, else returns the error string.
     """
 
     cleaned = sql.strip().rstrip(";").strip()
     if not cleaned:
-        return ValidationResult(is_valid=False, error="Empty SQL query.")
+        return "Empty SQL query."
 
     # ---- Layer 1: Regex ----
     match = _DML_PATTERN.search(cleaned)
     if match:
         keyword = match.group(0).upper()
-        return ValidationResult(
-            is_valid=False,
-            error=f"Blocked: DML/DDL keyword '{keyword}' detected.",
-        )
+        return f"Blocked: DML/DDL keyword '{keyword}' detected."
 
     # ---- Layer 2: AST parsing via sqlglot ----
     try:
-        parsed = sqlglot.parse(cleaned)
-    except (ParseError, TokenError) as exc:
-        return ValidationResult(
-            is_valid=False,
-            error=f"SQL syntax/token error (Model might have returned text instead of SQL): {exc}",
-        )
-    except Exception as exc:
-        return ValidationResult(
-            is_valid=False,
-            error=f"Unexpected validation error: {exc}",
-        )
+        # sqlglot'a T-SQL (MS SQL Server) şivesini kullanmasını söylüyoruz
+        parsed = sqlglot.parse(cleaned, read="tsql")
 
-    for statement in parsed:
-        if statement is None:
-            continue
-        for node in statement.walk():
-            if type(node) in _BLOCKED_STATEMENT_TYPES:
-                return ValidationResult(
-                    is_valid=False,
-                    error=f"Blocked: {type(node).__name__} statement is not allowed.",
-                )
+        for statement in parsed:
+            if statement is None:
+                continue
+            for node in statement.walk():
+                if type(node) in _BLOCKED_STATEMENT_TYPES:
+                    return f"Blocked: {type(node).__name__} statement is not allowed."
 
-    return ValidationResult(is_valid=True)
+    except (ParseError, TokenError) as e:
+        return (
+            f"Blocked: Could not parse SQL or invalid format. "
+            f"Model might have returned raw text instead of SQL. Details: {e}"
+        )
+    except Exception as e:
+        return f"Blocked: Unexpected validation error: {e}"
+
+    return None

@@ -30,6 +30,11 @@ class Settings:
         default_factory=lambda: int(os.getenv("MAX_RETRY_COUNT", "3"))
     )
 
+    # --- ChromaDB ---
+    CHROMA_PERSIST_DIR: str = field(
+        default_factory=lambda: os.getenv("CHROMA_PERSIST_DIR", ".chroma_data")
+    )
+
     # --- API ---
     API_PREFIX: str = "/api/v1"
     DEBUG: bool = field(
