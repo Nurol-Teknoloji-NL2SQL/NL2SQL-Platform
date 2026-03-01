@@ -88,6 +88,13 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-nl2sql_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nl2sql}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      - LLM_PROVIDER=${LLM_PROVIDER:-auto}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-llama3.1:8b-instruct-q4_K_M}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://localhost:11434}
+      - LLM_REQUEST_TIMEOUT=${LLM_REQUEST_TIMEOUT:-180}
+      - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-4}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - WORKERS=${AI_WORKERS:-2}
     ports:
