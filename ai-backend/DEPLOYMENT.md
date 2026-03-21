@@ -377,6 +377,6 @@ Her `db_id` için onboarding en az bir kez yapılmalıdır.
 # Yerel
 uvicorn main:app --log-level debug
 
-# Docker
+# Docker (deneme)
 docker logs nl2sql-ai-backend -f --tail=100
 ```
