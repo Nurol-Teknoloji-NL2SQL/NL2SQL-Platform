@@ -2,8 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { SendHorizontal, Database, User, Loader2, Sparkles } from "lucide-react";
 import SectionWrapper from "../shared/SectionWrapper";
 import ScrollReveal from "../shared/ScrollReveal";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+import SqlHighlight from "../shared/SqlHighlight";
+import ResultTable from "./ResultTable";
+import { api } from "../../services/api";
+import { useToast } from "../../context/ToastContext";
 
 export default function QueryInterface() {
   const [question, setQuestion] = useState("");
@@ -11,12 +13,12 @@ export default function QueryInterface() {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const toast = useToast();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // Auto-resize textarea
   const handleInput = (e) => {
     setQuestion(e.target.value);
     const ta = textareaRef.current;
@@ -31,7 +33,6 @@ export default function QueryInterface() {
     const trimmed = question.trim();
     if (!trimmed || loading) return;
 
-    // Add user message
     const userMsg = { role: "user", content: trimmed };
     setMessages((prev) => [...prev, userMsg]);
     setQuestion("");
@@ -39,35 +40,16 @@ export default function QueryInterface() {
 
     setLoading(true);
     try {
-      const headers = { "Content-Type": "application/json" };
-      const token = localStorage.getItem("token");
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const response = await fetch(`${API_BASE}/query/generate-sql`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ query: trimmed }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        let msg = `İstek başarısız: ${response.status}`;
-        try {
-          const j = JSON.parse(text);
-          msg = j.message || j.error || j.error_message || j.detail || msg;
-        } catch (_) {}
-        setMessages((prev) => [...prev, { role: "error", content: msg }]);
-        setLoading(false);
-        return;
-      }
-
-      const data = await response.json();
+      const data = await api.post("/query/generate-sql", { query: trimmed });
       setMessages((prev) => [...prev, { role: "assistant", data }]);
+      toast.success("SQL sorgusu başarıyla üretildi.");
     } catch (err) {
+      const errorMsg = err.message || "Sunucuya ulaşırken bir hata oluştu.";
       setMessages((prev) => [
         ...prev,
-        { role: "error", content: "Sunucuya ulaşırken bir hata oluştu." },
+        { role: "error", content: errorMsg, fieldErrors: err.fieldErrors || null },
       ]);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -189,7 +171,7 @@ export default function QueryInterface() {
 /* --- Message Bubble --- */
 
 function MessageBubble({ message }) {
-  const { role, content, data } = message;
+  const { role, content, data, fieldErrors } = message;
 
   if (role === "user") {
     return (
@@ -210,8 +192,17 @@ function MessageBubble({ message }) {
         <div className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center shrink-0">
           <Database className="w-3.5 h-3.5 text-red-500" />
         </div>
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl rounded-tl-sm px-4 py-2.5 max-w-[80%] text-sm">
-          {content}
+        <div className="bg-red-50 border border-red-200 rounded-2xl rounded-tl-sm px-4 py-2.5 max-w-[80%]">
+          <p className="text-sm text-red-700">{content}</p>
+          {fieldErrors && Object.keys(fieldErrors).length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {Object.entries(fieldErrors).map(([field, msg]) => (
+                <li key={field} className="text-xs text-red-600">
+                  <span className="font-semibold">{field}:</span> {msg}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     );
@@ -240,13 +231,13 @@ function MessageBubble({ message }) {
         <Database className="w-3.5 h-3.5 text-white" />
       </div>
       <div className="flex-1 min-w-0 space-y-3 max-w-[90%]">
-        {/* SQL block */}
+        {/* SQL block with syntax highlighting */}
         {sqlText && (
-          <div className="bg-slate-900 text-slate-200 rounded-xl px-4 py-3 font-mono text-xs sm:text-sm whitespace-pre-wrap overflow-x-auto">
+          <div className="bg-slate-900 rounded-xl px-4 py-3 font-mono text-xs sm:text-sm overflow-x-auto">
             <span className="text-blue-400 text-[10px] uppercase tracking-wider font-semibold block mb-1.5">
               SQL
             </span>
-            {sqlText}
+            <SqlHighlight sql={sqlText} />
           </div>
         )}
 
@@ -270,48 +261,19 @@ function MessageBubble({ message }) {
           </span>
         )}
 
-        {/* Data table */}
+        {/* Data table with pagination */}
         {dataRows != null &&
           !(Array.isArray(dataRows) && dataRows.length === 0) && (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Sonuçlar
               </div>
-              <div className="overflow-x-auto max-h-[280px] overflow-y-auto">
-                {isArrayOfObjects ? (
-                  <table className="w-full text-xs sm:text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200">
-                        {tableColumns.map((col) => (
-                          <th
-                            key={col}
-                            className="text-left px-3 py-2 font-semibold text-slate-700 bg-slate-50 sticky top-0"
-                          >
-                            {col}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dataRows.map((row, i) => (
-                        <tr
-                          key={i}
-                          className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors"
-                        >
-                          {tableColumns.map((col) => (
-                            <td key={col} className="px-3 py-2 text-slate-600 whitespace-nowrap">
-                              {row[col] == null ? "—" : String(row[col])}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <pre className="p-3 text-xs font-mono whitespace-pre-wrap text-slate-600">
-                    {JSON.stringify(dataRows, null, 2)}
-                  </pre>
-                )}
+              <div className="max-h-[320px] overflow-y-auto">
+                <ResultTable
+                  dataRows={dataRows}
+                  tableColumns={tableColumns}
+                  isArrayOfObjects={isArrayOfObjects}
+                />
               </div>
             </div>
           )}

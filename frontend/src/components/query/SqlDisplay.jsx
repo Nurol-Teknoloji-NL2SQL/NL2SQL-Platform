@@ -1,10 +1,12 @@
+import SqlHighlight from "../shared/SqlHighlight";
+
 export default function SqlDisplay({ sqlText, explanationText, isValidated }) {
   return (
     <div className="space-y-4">
       {sqlText && (
-        <div className="p-4 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 font-mono text-sm whitespace-pre-wrap">
+        <div className="p-4 rounded-lg border border-slate-700 bg-slate-900 font-mono text-sm">
           <div className="font-semibold mb-2 text-blue-300">Üretilen SQL</div>
-          {sqlText}
+          <SqlHighlight sql={sqlText} />
         </div>
       )}
 

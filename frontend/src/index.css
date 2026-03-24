@@ -105,6 +105,16 @@ body {
   background: #64748b;
 }
 
+/* Toast progress bar */
+@keyframes toast-progress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.toast-progress-bar {
+  animation: toast-progress 4s linear forwards;
+}
+
 /* Cursor follower */
 .cursor-dot {
   position: fixed;
