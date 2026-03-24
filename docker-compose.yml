@@ -147,6 +147,10 @@ services:
       - ConnectionStrings__Redis=redis:6379,password=${REDIS_PASSWORD},abortConnect=false,connectTimeout=5000
       # AI Backend
       - AIBackend__BaseUrl=http://ai-backend:8000
+      # Eşzamanlılık (appsettings ile aynı anahtarlar; .env ile override edilebilir)
+      - Concurrency__GlobalMaxConcurrentAiQueries=${CONCURRENCY_GLOBAL_MAX:-15}
+      - Concurrency__PerUserMaxConcurrentAiQueries=${CONCURRENCY_PER_USER_MAX:-2}
+      - Concurrency__PerUserAiQueryQueueLimit=${CONCURRENCY_PER_USER_QUEUE:-4}
       # JWT
       - Jwt__SecretKey=${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
       - Jwt__Issuer=nl2sql-core-backend

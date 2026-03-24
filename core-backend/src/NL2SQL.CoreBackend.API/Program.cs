@@ -1,4 +1,11 @@
+using System.Security.Claims;
+using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.OpenApi.Models;
+using NL2SQL.CoreBackend.API.Middleware;
+using NL2SQL.CoreBackend.API.Swagger;
 using NL2SQL.CoreBackend.Application;
+using NL2SQL.CoreBackend.Application.Common.Options;
 using NL2SQL.CoreBackend.Infrastructure;
 using Serilog;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,15 +22,59 @@ builder.Host.UseSerilog((context, config) =>
 
 // ─── Services ───
 builder.Services.AddControllers();
+builder.Services.AddFluentValidationAutoValidation();
+
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState.Values
+            .SelectMany(v => v.Errors)
+            .Select(e => string.IsNullOrEmpty(e.ErrorMessage) ? "Geçersiz alan." : e.ErrorMessage)
+            .ToList();
+        return new BadRequestObjectResult(new
+        {
+            success = false,
+            message = "Doğrulama hatası.",
+            errors
+        });
+    };
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new() { Title = "NL2SQL Core Backend API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "NL2SQL Core Backend API",
+        Version = "v1",
+        Description = "Auth, veritabanı bağlantıları, sorgu geçmişi ve (ileride) NL→SQL akışı."
+    });
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Önce /api/auth/login ile token alın; buraya: Bearer {accessToken}"
+    });
+    c.OperationFilter<AuthorizeOperationFilter>();
+    var xml = Path.Combine(AppContext.BaseDirectory, $"{typeof(Program).Assembly.GetName().Name}.xml");
+    if (File.Exists(xml))
+        c.IncludeXmlComments(xml, includeControllerXmlComments: true);
 });
 
 // Application & Infrastructure katmanları
 builder.Services.AddApplicationServices();
+builder.Services.Configure<QueryExecutionOptions>(
+    builder.Configuration.GetSection(QueryExecutionOptions.SectionName));
+builder.Services.Configure<ConcurrencyOptions>(
+    builder.Configuration.GetSection(ConcurrencyOptions.SectionName));
 builder.Services.AddInfrastructureServices(builder.Configuration);
+
+var concurrencyForRateLimit = builder.Configuration.GetSection(ConcurrencyOptions.SectionName)
+    .Get<ConcurrencyOptions>() ?? new ConcurrencyOptions();
 
 // ─── Health Checks ───
 builder.Services.AddHealthChecks()
@@ -45,12 +96,21 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst
             }));
 
-    // AI sorgu endpoint'i – daha sıkı limit
-    options.AddFixedWindowLimiter("ai-query", opt =>
+    // AI sorgu: kullanıcı başına eşzamanlı istek (ConcurrencyLimiter)
+    options.AddPolicy("ai-query", httpContext =>
     {
-        opt.PermitLimit = 20;
-        opt.Window = TimeSpan.FromMinutes(1);
-        opt.QueueLimit = 5;
+        var uid = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var partitionKey = string.IsNullOrEmpty(uid)
+            ? httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"
+            : $"u:{uid}";
+        return RateLimitPartition.GetConcurrencyLimiter(
+            partitionKey,
+            _ => new ConcurrencyLimiterOptions
+            {
+                PermitLimit = Math.Max(1, concurrencyForRateLimit.PerUserMaxConcurrentAiQueries),
+                QueueLimit = Math.Max(0, concurrencyForRateLimit.PerUserAiQueryQueueLimit),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            });
     });
 
     // Auth endpoint'leri – brute-force koruması
@@ -61,6 +121,14 @@ builder.Services.AddRateLimiter(options =>
         opt.QueueLimit = 0;
     });
 
+    // Onboarding extract/register – DB + AI yükü
+    options.AddFixedWindowLimiter("onboarding", opt =>
+    {
+        opt.PermitLimit = 30;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueLimit = 8;
+    });
+
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (context, token) =>
     {
@@ -68,7 +136,7 @@ builder.Services.AddRateLimiter(options =>
         await context.HttpContext.Response.WriteAsJsonAsync(new
         {
             error = "Rate limit exceeded",
-            message = "Çok fazla istek gönderdiniz. Lütfen biraz bekleyip tekrar deneyin.",
+            message = "İstek veya eşzamanlılık limiti aşıldı. Lütfen kısa süre sonra tekrar deneyin.",
             retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
                 ? retryAfter.TotalSeconds : 60
         }, token);
@@ -92,6 +160,7 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // ─── Middleware Pipeline ───
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())

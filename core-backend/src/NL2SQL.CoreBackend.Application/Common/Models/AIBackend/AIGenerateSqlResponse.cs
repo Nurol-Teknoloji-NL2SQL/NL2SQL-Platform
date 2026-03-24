@@ -18,4 +18,17 @@ public class AIGenerateSqlResponse
 
     [JsonPropertyName("status")]
     public string Status { get; set; } = string.Empty;
+
+    /// <summary>Sözleşme v2 hata gövdesi veya açıklama metni.</summary>
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    [JsonPropertyName("error_code")]
+    public string? ErrorCode { get; set; }
+
+    [JsonPropertyName("is_validated")]
+    public bool? IsValidated { get; set; }
+
+    [JsonPropertyName("impact_rows")]
+    public int? ImpactRows { get; set; }
 }

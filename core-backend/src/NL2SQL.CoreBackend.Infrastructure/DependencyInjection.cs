@@ -8,7 +8,9 @@ using Polly;
 using Polly.Extensions.Http;
 using StackExchange.Redis;
 using NL2SQL.CoreBackend.Application.Common.Interfaces;
+using NL2SQL.CoreBackend.Infrastructure.Concurrency;
 using NL2SQL.CoreBackend.Infrastructure.Persistence;
+using NL2SQL.CoreBackend.Infrastructure.Security;
 using NL2SQL.CoreBackend.Infrastructure.Services;
 
 namespace NL2SQL.CoreBackend.Infrastructure;
@@ -82,6 +84,12 @@ public static class DependencyInjection
         // ─── Auth Services ───
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+        services.AddSingleton<IAiQueryConcurrencyGate, AiQueryConcurrencyGate>();
+
+        services.AddScoped<ISqlSecurityValidator, SqlSecurityValidator>();
+        services.AddScoped<ISqlExecutionService, SqlExecutionService>();
+        services.AddScoped<IQueryHistoryReadService, QueryHistoryReadService>();
 
         // ─── HttpClient – AI Backend (Typed Client + Polly) ───
         services.AddHttpClient<IAIBackendService, AIBackendService>(client =>
