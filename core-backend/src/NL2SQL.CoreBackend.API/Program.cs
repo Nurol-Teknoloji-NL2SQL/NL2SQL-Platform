@@ -7,8 +7,10 @@ using NL2SQL.CoreBackend.API.Swagger;
 using NL2SQL.CoreBackend.Application;
 using NL2SQL.CoreBackend.Application.Common.Options;
 using NL2SQL.CoreBackend.Infrastructure;
+using NL2SQL.CoreBackend.Infrastructure.Persistence;
 using Serilog;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 using Prometheus;
 
@@ -48,7 +50,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "NL2SQL Core Backend API",
         Version = "v1",
-        Description = "Auth, veritabanı bağlantıları, sorgu geçmişi ve (ileride) NL→SQL akışı."
+        Description = "Auth, veritabanı bağlantıları, sorgu geçmişi ve NL→SQL akışı."
     });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
@@ -180,5 +182,11 @@ app.UseMetricServer();
 
 app.MapControllers();
 app.MapHealthChecks("/health");
+
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    dbContext.Database.Migrate();
+}
 
 app.Run();
