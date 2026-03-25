@@ -15,6 +15,11 @@ export default function QueryInterface() {
   const textareaRef = useRef(null);
   const toast = useToast();
 
+  // Backend endpoint'i için zorunlu: GenerateSqlRequest.DbId
+  // UI'de seçim ekranı yok; bu yüzden env/localStorage ile override edilebilir.
+  const dbId =
+    localStorage.getItem("dbId") || import.meta.env.VITE_DB_ID || "nl2sql";
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
@@ -40,8 +45,17 @@ export default function QueryInterface() {
 
     setLoading(true);
     try {
-      const data = await api.post("/query/generate-sql", { query: trimmed });
-      setMessages((prev) => [...prev, { role: "assistant", data }]);
+      const resp = await api.post("/query/generate-sql", {
+        query: trimmed,
+        dbId,
+      });
+
+      // core-backend ApiResponse<T> döndürür: { success, message, data: T }
+      const generatePayload = resp?.data ?? resp?.Data ?? resp;
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", data: generatePayload },
+      ]);
       toast.success("SQL sorgusu başarıyla üretildi.");
     } catch (err) {
       const errorMsg = err.message || "Sunucuya ulaşırken bir hata oluştu.";
@@ -209,13 +223,16 @@ function MessageBubble({ message }) {
   }
 
   // Assistant message with data
-  const sqlText = data?.sql_query || data?.sql || "";
+  const sqlText =
+    data?.sql_query || data?.sql || data?.sqlQuery || data?.sql_query_text || "";
   const explanationText = data?.explanation || data?.message || data?.details || "";
   const dataRows = data?.data ?? data?.rows ?? data?.result ?? null;
   const isValidated =
     data && Object.prototype.hasOwnProperty.call(data, "is_validated")
       ? data.is_validated
-      : undefined;
+      : Object.prototype.hasOwnProperty.call(data, "isValidated")
+        ? data.isValidated
+        : undefined;
 
   const isArrayOfObjects =
     Array.isArray(dataRows) &&
