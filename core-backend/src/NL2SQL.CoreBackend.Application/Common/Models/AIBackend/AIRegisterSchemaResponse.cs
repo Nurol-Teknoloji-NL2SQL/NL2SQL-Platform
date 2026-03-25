@@ -12,4 +12,10 @@ public class AIRegisterSchemaResponse
 
     [JsonPropertyName("chunks_saved")]
     public int ChunksSaved { get; set; }
+
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
+    /// <summary>HTTP hatası veya boş gövde durumunda handler tarafından doldurulur.</summary>
+    public string? Error { get; set; }
 }
