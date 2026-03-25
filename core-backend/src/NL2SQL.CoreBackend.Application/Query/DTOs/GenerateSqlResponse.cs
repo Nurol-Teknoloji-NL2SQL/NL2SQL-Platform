@@ -4,10 +4,13 @@ public record GenerateSqlResponse(
     string Status,
     string? SqlQuery,
     string? Explanation,
-    List<Dictionary<string, object>>? Data,
+    List<Dictionary<string, object?>>? Data,
     string? Error,
     ValidationResult Validation,
-    int? ExecutionTimeMs
+    int? ExecutionTimeMs,
+    bool? IsValidated,
+    int? ImpactRows,
+    string? AiErrorCode
 );
 
 public record ValidationResult(
