@@ -12,6 +12,9 @@ public class AIExtractSchemaResponse
 
     [JsonPropertyName("few_shot_examples")]
     public List<Dictionary<string, string>> FewShotExamples { get; set; } = [];
+
+    /// <summary>HTTP hatası veya ayrıştırma hatası durumunda doldurulur.</summary>
+    public string? Error { get; set; }
 }
 
 public class AITableSchema

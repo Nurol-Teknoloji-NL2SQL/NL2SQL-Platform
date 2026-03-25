@@ -13,6 +13,9 @@ public class AIGenerateSqlRequest
     [JsonPropertyName("query")]
     public string Query { get; set; } = string.Empty;
 
+    [JsonPropertyName("dry_run_limit")]
+    public int? DryRunLimit { get; set; }
+
     [JsonPropertyName("user_id")]
     public string? UserId { get; set; }
 }
