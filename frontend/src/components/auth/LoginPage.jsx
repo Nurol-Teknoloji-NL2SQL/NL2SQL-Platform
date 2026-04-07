@@ -14,7 +14,7 @@ export default function LoginPage() {
   const toast = useToast();
 
   if (api.isAuthenticated()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/workspace" replace />;
   }
 
   const handleSubmit = async (e) => {
@@ -32,8 +32,8 @@ export default function LoginPage() {
     try {
       await api.login({ email: normalizedEmail, password });
       toast.success("Giriş başarılı.");
-      const targetPath = location.state?.from?.pathname || "/";
-      navigate(targetPath, { replace: true, state: { scrollToQuery: true } });
+      const targetPath = location.state?.from?.pathname || "/workspace";
+      navigate(targetPath, { replace: true });
     } catch (err) {
       const errorMsg = err.message || "Giriş yapılırken bir hata oluştu.";
       setError(errorMsg);

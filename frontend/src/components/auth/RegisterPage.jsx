@@ -14,7 +14,7 @@ export default function RegisterPage() {
   const toast = useToast();
 
   if (api.isAuthenticated()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/workspace" replace />;
   }
 
   const handleSubmit = async (e) => {
@@ -38,7 +38,7 @@ export default function RegisterPage() {
         password,
       });
       toast.success("Kayıt başarılı. Hoş geldiniz.");
-      navigate("/", { replace: true });
+      navigate("/workspace", { replace: true });
     } catch (err) {
       const errorMsg = err.message || "Kayıt sırasında bir hata oluştu.";
       setError(errorMsg);
