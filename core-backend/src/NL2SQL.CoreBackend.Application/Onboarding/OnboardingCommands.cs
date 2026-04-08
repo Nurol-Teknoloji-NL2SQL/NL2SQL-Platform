@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using NL2SQL.CoreBackend.Application.Common.Extensions;
 using NL2SQL.CoreBackend.Application.Common.Interfaces;
 using NL2SQL.CoreBackend.Application.Common.Models;
 using NL2SQL.CoreBackend.Application.Common.Models.AIBackend;
@@ -53,7 +54,22 @@ public sealed class OnboardingMutationHandlers :
         if (string.IsNullOrEmpty(cs))
             return ApiResponse<ExtractSchemaResponseDto>.Fail("Bağlantı dizisi boş.");
 
-        var aiReq = new AIExtractSchemaRequest { DbId = conn.DbId, ConnectionString = cs };
+        // The Python AI backend uses SQLAlchemy create_engine(), which expects
+        // a URL like postgresql+psycopg2://user:pass@host:port/db. Our stored
+        // connection strings are in ADO.NET key=value form (so Npgsql / EF
+        // Core can read them natively), so we translate before delegating.
+        string sqlAlchemyUrl;
+        try
+        {
+            sqlAlchemyUrl = SqlAlchemyUrlBuilder.Build(conn.Provider, cs);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            _logger.LogWarning(ex, "Bağlantı dizisi SQLAlchemy URL'sine çevrilemedi (db_id: {DbId})", dbId);
+            return ApiResponse<ExtractSchemaResponseDto>.Fail(ex.Message);
+        }
+
+        var aiReq = new AIExtractSchemaRequest { DbId = conn.DbId, ConnectionString = sqlAlchemyUrl };
 
         AIExtractSchemaResponse ai;
         try

@@ -2,6 +2,7 @@ using System.Text.Json;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using NL2SQL.CoreBackend.Application.Common.Extensions;
 using NL2SQL.CoreBackend.Application.Common.Interfaces;
 using NL2SQL.CoreBackend.Application.Common.Models;
 using NL2SQL.CoreBackend.Application.Common.Models.AIBackend;
@@ -66,10 +67,23 @@ public sealed class GenerateSqlCommandHandler : IRequestHandler<GenerateSqlComma
 
         await using (await _gate.AcquireAsync(ct).ConfigureAwait(false))
         {
+        // AI backend speaks SQLAlchemy URL; our stored CS is ADO.NET form.
+        // See SqlAlchemyUrlBuilder for the rationale.
+        string aiConnectionString;
+        try
+        {
+            aiConnectionString = SqlAlchemyUrlBuilder.Build(conn.Provider, conn.ConnectionString);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            _logger.LogWarning(ex, "Bağlantı dizisi SQLAlchemy URL'sine çevrilemedi (db_id: {DbId})", conn.DbId);
+            return ApiResponse<GenerateSqlResponse>.Fail(ex.Message);
+        }
+
         var aiRequest = new AIGenerateSqlRequest
         {
             DbId = conn.DbId,
-            ConnectionString = conn.ConnectionString,
+            ConnectionString = aiConnectionString,
             Query = req.Query.Trim(),
             UserId = cmd.UserId.ToString(),
             DryRunLimit = req.DryRunLimit ?? opt.DefaultDryRunLimit
